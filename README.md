@@ -3,8 +3,8 @@
 The seductive properties of Erlang make it the core of network exposed daemons:
 
 * XMPP server [ejabberd](https://www.ejabberd.im),
-* NoSQL database [couchdb](http://couchdb.apache.org),
-* AMQP broker [rabbitmq](https://www.rabbitmq.com).
+* AMQP broker [rabbitmq](https://www.rabbitmq.com),
+* NoSQL database [couchdb](http://couchdb.apache.org).
 
 Both `rabbitmq` and `ejbabberd` provides messaging, a convenient way to interconnect components. OpenStack deployments routinely use `rabbitmq` as its core messaging system.
 
@@ -13,7 +13,6 @@ This repository provides tools to assess Erlang distribution protocol weaknesses
 * detail flaws related to cookie generation and authentication mecanism;
 * provide tools associated with guessing, uncovering, or brute-forcing the Erlang cookie;
 * provide Python tool to remotely execute code on vulnerable servers.
-
 
 ## Erlang, and Erlang distribution protocol
 
@@ -35,9 +34,10 @@ Processes that need to communicate using distribution must share a common secret
 * [handshake](http://erlang.org/doc/apps/erts/erl_dist_protocol.html#id104761): it provides mutual authentication between two Erlang nodes. It is based on deprecated MD5 hashing, and the salt mecanism is rather weak.
 * control: _overly simplified_, consists in Erlang messages in their [external encoded form](http://erlang.org/doc/apps/erts/erl_ext_dist.html)
 
-The careful reader will have noticed the warning below:
-
+Erlang is transparent and explicitely claims it is unsecure:
 ![Explicit advisory](erldp-warning.png?raw=true)
+
+Well, most of the time, installing `ejabberd` or `rabbitmq` would bind Erlang distribution to the IPv4 wildcard. Erlang distribution might not be as protected as it should be ...
 
 ## Finding Erlang distribution ports
 
@@ -290,5 +290,10 @@ Gaining an interactive reverse shell is now a step ahead.
 
 ### Exploiting man-in-the-middle
 
-A man-in-the-middle attacker may wait for the legit client to authenticate, and then inject malicious commands into the external encoded Erlang stream, which is neither ciphered, neither authenticated. **WIP**
+A man-in-the-middle attacker may wait for the legit client to authenticate, and then inject malicious commands into the external encoded Erlang stream, which is neither ciphered, neither authenticated. This part is still a **work in progress**.
 
+## Recommendations
+
+* Replace automatically generated cookies by ones generated using a strong PRNG.
+* Protect integrity and confidentiality of distribution using TLS, with mutual authentication. Note this renders Erlang cookie useless.
+* _3NJ0Y Y0Ur W1D3 0P3N 3r14N6 D157r18U710N P0r7 !_
