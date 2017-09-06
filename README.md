@@ -1,5 +1,7 @@
 # Guessing for fun and profit
 
+**TLDR; Erlang Distribution offers arbitrary code execution, and its access shall have been protected, as explicitely stated by Erlang. Sadly, well known daemons expose it, and authentication is based on a guessable seed.**
+
 The seductive properties of Erlang make it the core of network exposed daemons:
 
 * XMPP server [ejabberd](https://www.ejabberd.im),
