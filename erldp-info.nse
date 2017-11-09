@@ -71,7 +71,6 @@ local function decode(conn)
 
   status, data = conn:receive_buf(match.numbytes(2), true)
   if not status then
-    stdnse.debug1("could not receive length over two bytes")
     return
   end
 
@@ -79,7 +78,6 @@ local function decode(conn)
 
   status, data = conn:receive_buf(match.numbytes(length), true)
   if not status then
-    stdnse.debug1("could not receive whole payload")
     return
   end
 
@@ -109,21 +107,18 @@ action = function(host, port)
   send_name = bin.pack('>SCSIA', 7+string.len(local_name), 110, 5, 0x3499c, local_name)
 
   if not client:send(send_name) then
-    stdnse.debug1("could not send send_name message")
     client:close()
     return
   end
 
   data = decode(client)
   if not data or data:sub(1, 1) ~= "s" or data:sub(2, 3) ~= "ok" then
-    stdnse.debug1("could not receive recv_status")
     client:close()
     return
   end
 
   data = decode(client)
   if not data or data:sub(1, 1) ~= "n" then
-    stdnse.debug1("could not recv recv_challenge")
     client:close()
     return
   end

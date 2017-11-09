@@ -43,6 +43,19 @@ Well, most of the time, installing `ejabberd` or `rabbitmq` would bind Erlang di
 
 ## Finding Erlang distribution ports
 
+As a starter, let's use github.com to find trendy Erlang server projects. I bet it can change, but op eight of [today's monthly](https://github.com/trending/erlang?since=monthly) gives:
+
+* rabbitmq/rabbitmq-server: Open source multi-protocol messaging broker
+* emqtt/emqttd: EMQ - Erlang MQTT Broker
+* ninesnines/cowboy: Small, fast, modern HTTP server for Erlang/OTP.
+* apache/couchdb: Apache CouchDB
+* processone/ejabberd: Robust, ubiquitous and massively scalable Jabber / XMPP Instant Messaging platform
+* erlio/vernemq: A distributed MQTT message broker based on Erlang/OTP
+* gotthardp/lorawan-server: Compact server for private LoRa networks
+* esl/MongooseIM: MongooseIM is a mobile messaging platform with focus on performance and scalability
+
+Out of these eight projects, it turns out that seven of them setup a distribution port. So it is not something seldom, but rather a default setup for Erlang servers. Details can be found in [setup and scan notes](Docker-experiments.md).
+
 ### `epmd` lists Erlang processes
 
 Erlang uses a registry to provide a naming function. The Erlang port mapper daemon aka `epmd` will list all the Erlang nodes accessible on the local host. Well known port for this daemon is `TCP/4369`. `nmap` will be able to extract information available on it:
