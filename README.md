@@ -58,7 +58,7 @@ PORT     STATE SERVICE VERSION
 |_    rabbit: 25672
 ```
 
-### Probing unknown TCP for Erlang distribution
+### Probing unknown TCP port for Erlang distribution
 
 Access to `epmd` may be filtered. Quoting [ejabberd security guide](https://docs.ejabberd.im/admin/guide/security/):
 
