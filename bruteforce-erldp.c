@@ -11,6 +11,7 @@
 #include <inttypes.h>
 #include <sys/errno.h>
 #include <signal.h>
+#include <inttypes.h>
 #include <assert.h>
 
 #include "erldp.h"
@@ -30,9 +31,9 @@ struct worker {
   uint64_t start;
   uint64_t end;
 
-  volatile uint32_t cumulative_seeds;
-  volatile uint32_t cumulative_conns;
-  volatile uint32_t cumulative_fails;
+  volatile uint64_t cumulative_seeds;
+  volatile uint64_t cumulative_conns;
+  volatile uint64_t cumulative_fails;
 };
 
 static int n_workers = 64;
@@ -143,7 +144,7 @@ static void *worker_run(void *arg) {
   int ret;
   uint64_t seed;
   int sd;
-  uint32_t challenge;
+  uint64_t challenge;
   char cookie[20];
   uint8_t buffer[256];
   char send_name[64] = "n" "\x00\x05" "\x00\x03\x7f\xfc";
@@ -270,15 +271,15 @@ int main(int argc, char **argv) {
   int option_index = 0;
   int c;
   int i;
-  uint32_t cumulative_conns;
-  uint32_t last_cumulative_conns = 0;
-  uint32_t delta_conns;
-  uint32_t cumulative_seeds;
-  uint32_t last_cumulative_seeds = 0;
-  uint32_t delta_seeds;
-  uint32_t cumulative_fails;
-  uint32_t last_cumulative_fails = 0;
-  uint32_t delta_fails;
+  uint64_t cumulative_conns;
+  uint64_t last_cumulative_conns = 0;
+  uint64_t delta_conns;
+  uint64_t cumulative_seeds;
+  uint64_t last_cumulative_seeds = 0;
+  uint64_t delta_seeds;
+  uint64_t cumulative_fails;
+  uint64_t last_cumulative_fails = 0;
+  uint64_t delta_fails;
   uint64_t seed_delta;
 
   static struct option options[] = {
@@ -384,7 +385,7 @@ int main(int argc, char **argv) {
     delta_fails = cumulative_fails - last_cumulative_fails;
     last_cumulative_fails = cumulative_fails;
 
-    printf("\r %u seed/s (%u conn/s, %u fails/s)\t\t%2.2f%%", delta_seeds, delta_conns, delta_fails, (last_cumulative_seeds*100.0)/(seed_end - seed_start));
+    printf("\r %" PRIu64 " seed/s (%" PRIu64 " conn/s, %" PRIu64 " fails/s)\t\t%2.5f%%\t\t%*" PRIu64, delta_seeds, delta_conns, delta_fails, (last_cumulative_seeds*100.0)/(seed_end - seed_start), 10, cumulative_conns);
     fflush(stdout);
   }
 
