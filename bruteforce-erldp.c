@@ -30,6 +30,7 @@ struct worker {
   int index;
   uint64_t start;
   uint64_t end;
+  uint64_t incr;
 
   volatile uint64_t cumulative_seeds;
   volatile uint64_t cumulative_conns;
@@ -159,7 +160,7 @@ static void *worker_run(void *arg) {
   addr.sin_addr.s_addr = inet_addr(target);
   addr.sin_port = htons(port);
 
-  for (seed = w->start; seed <= w->end && !quit; seed += 1) {
+  for (seed = w->start; seed <= w->end && !quit; seed += w->incr) {
     create_cookie(seed, cookie, sizeof(cookie));
 
     sd = socket(PF_INET, SOCK_STREAM, 0);
@@ -347,8 +348,9 @@ int main(int argc, char **argv) {
   printf("each worker will sweep though an interval of size %" PRIu64 "\n", seed_delta);
 
   for (i = 0; i < n_workers; i++) {
-    workers[i].start = seed_start + i*seed_delta;
-    workers[i].end = seed_start + (i+1)*seed_delta;
+    workers[i].start = seed_start + i;
+    workers[i].end = seed_end;
+    workers[i].incr = n_workers;
     workers[i].index = i;
     workers[i].cumulative_conns = 0;
     workers[i].cumulative_seeds = 0;
