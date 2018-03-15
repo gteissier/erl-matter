@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <pthread.h>
+#include <inttypes.h>
 #include <assert.h>
 
 #include "erldp.h"
@@ -159,7 +160,7 @@ int main(int argc, char **argv) {
   }
 
   seed = revert_random(seed0);
-  printf("%llu\n", seed);
+  printf("%" PRIu64 "\n", seed);
 
   return 0;
 }

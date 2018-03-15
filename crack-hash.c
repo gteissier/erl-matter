@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
+#include <inttypes.h>
 #include <assert.h>
 
 #include "erldp.h"
@@ -68,7 +69,7 @@ int main(int argc, char **argv) {
   hash = argv[1];
 
   base64_decode_init(&base64_ctx);
-  base64_decode_update(&base64_ctx, &dst_size, raw_hash, strlen(hash), (const uint8_t *) hash);
+  base64_decode_update(&base64_ctx, &dst_size, raw_hash, strlen(hash), (const char *) hash);
   ret = base64_decode_final(&base64_ctx);
   assert(ret == 1);
   assert(dst_size == MD5_DIGEST_SIZE);
@@ -91,7 +92,7 @@ int main(int argc, char **argv) {
 
   if (quit) {
     printf("%.*s\n", 20, found_cookie);
-    fprintf(stderr, "  seed used to generate it = %llu\n", found_seed);
+    fprintf(stderr, "  seed used to generate it = %" PRIu64 "\n", found_seed);
   }
   else {
     fprintf(stderr, "cookie hash did not reveal a generated cookie\n");
