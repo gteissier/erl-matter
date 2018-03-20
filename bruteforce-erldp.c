@@ -12,6 +12,7 @@
 #include <sys/errno.h>
 #include <signal.h>
 #include <sys/queue.h>
+#include <inttypes.h>
 #include <assert.h>
 
 #include "erldp.h"
@@ -183,7 +184,7 @@ static void *worker_run(void *arg) {
   int ret;
   uint64_t seed, start, stop;
   int sd;
-  uint32_t challenge;
+  uint64_t challenge;
   char cookie[20];
   uint8_t buffer[256];
   char send_name[64] = "n" "\x00\x05" "\x00\x03\x7f\xfc";
@@ -248,37 +249,36 @@ static void *worker_run(void *arg) {
         return NULL;
       }
 
+      ret = read_msg(sd, buffer, sizeof(buffer));
+      if (ret == 0 || ret == -1) {
+        fprintf(stderr, "could not receive send_challengen");
+        quit = 1;
+        return NULL;
+      }
 
-    ret = read_msg(sd, buffer, sizeof(buffer));
-    if (ret == 0 || ret == -1) {
-      fprintf(stderr, "could not receive send_challengen");
-      quit = 1;
-      return NULL;
-    }
+      if (ret < 11 || buffer[0] != 'n') {
+        fprintf(stderr, "invalid / unexpected received, while awaiting send_challenge\n");
+        printf("received :");
+        hexdump(buffer, ret);
+        quit = 1;
+        return NULL;
+      }
 
-    if (ret < 11 || buffer[0] != 'n') {
-      fprintf(stderr, "invalid / unexpected received, while awaiting send_challenge\n");
-      printf("received :");
-      hexdump(buffer, ret);
-      quit = 1;
-      return NULL;
-    }
+      challenge = (buffer[7]<<24) + (buffer[8]<<16) + (buffer[9]<<8) + (buffer[10]<<0);
 
-    challenge = (buffer[7]<<24) + (buffer[8]<<16) + (buffer[9]<<8) + (buffer[10]<<0);
+      compute_response(sizeof(cookie), cookie, challenge, (uint8_t *) &send_challenge_reply[7]);
 
-    compute_response(sizeof(cookie), cookie, challenge, (uint8_t *) &send_challenge_reply[7]);
+      ret = write_exactly(sd, send_challenge_reply, sizeof(send_challenge_reply));
+      if (ret != sizeof(send_challenge_reply)) {
+        fprintf(stderr, "could not send complete send_challenge_reply\n");
+        quit = 1;
+        return NULL;
+      }
 
-    ret = write_exactly(sd, send_challenge_reply, sizeof(send_challenge_reply));
-    if (ret != sizeof(send_challenge_reply)) {
-      fprintf(stderr, "could not send complete send_challenge_reply\n");
-      quit = 1;
-      return NULL;
-    }
+      w->cumulative_seeds += 1;
 
-    w->cumulative_seeds += 1;
-
-    ret = read_msg(sd, buffer, sizeof(buffer));
-    if (ret == 17 && buffer[0] == 'a') {
+      ret = read_msg(sd, buffer, sizeof(buffer));
+      if (ret == 17 && buffer[0] == 'a') {
         printf("\nfound cookie = %.*s\n", 20, cookie);
         quit = 1;
         return NULL;
@@ -318,15 +318,15 @@ int main(int argc, char **argv) {
   int option_index = 0;
   int c;
   int i;
-  uint32_t cumulative_conns;
-  uint32_t last_cumulative_conns = 0;
-  uint32_t delta_conns;
-  uint32_t cumulative_seeds;
-  uint32_t last_cumulative_seeds = 0;
-  uint32_t delta_seeds;
-  uint32_t cumulative_fails;
-  uint32_t last_cumulative_fails = 0;
-  uint32_t delta_fails;
+  uint64_t cumulative_conns;
+  uint64_t last_cumulative_conns = 0;
+  uint64_t delta_conns;
+  uint64_t cumulative_seeds;
+  uint64_t last_cumulative_seeds = 0;
+  uint64_t delta_seeds;
+  uint64_t cumulative_fails;
+  uint64_t last_cumulative_fails = 0;
+  uint64_t delta_fails;
   struct interval *new_interval;
   float cumulative_prob;
 
@@ -431,7 +431,7 @@ int main(int argc, char **argv) {
     }
     cumulative_prob /= n_workers;
 
-    printf("\r %u seed/s (%u conn/s, %u fails/s)\t\t%2.4f%%", delta_seeds, delta_conns, delta_fails, 100.0*cumulative_prob);
+    printf("\r %" PRIu64 " seed/s (%" PRIu64 " conn/s, %" PRIu64 " fails/s)\t\t%2.5f%%", delta_seeds, delta_conns, delta_fails, 100.0*cumulative_prob);
     fflush(stdout);
   }
 
