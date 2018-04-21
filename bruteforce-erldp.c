@@ -339,7 +339,7 @@ int main(int argc, char **argv) {
     {"help", 0, 0, 'h'},
     {"threads", required_argument, 0, 't'},
     {"interval", required_argument, 0, 'i'},
-    {"seed-full-space", required_argument, 0, 's'},
+    {"seed-full-space", 0, 0, 's'},
     {NULL, 0, 0, 0},
   };
 
@@ -377,6 +377,7 @@ int main(int argc, char **argv) {
   }
 
   if (optind + 2 != argc) {
+    fprintf(stderr, "please, specify a target ip and a target port.\n");
     usage(argv[0]);
   }
 
