@@ -330,7 +330,7 @@ int main(int argc, char **argv) {
   uint64_t delta_fails;
   struct interval *new_interval;
   float cumulative_prob;
-  char full_space[] = "0,68719476735,1.0";
+  char full_space[] = "0,68719476735,100.0";
 
   TAILQ_INIT(&intervals);
 
