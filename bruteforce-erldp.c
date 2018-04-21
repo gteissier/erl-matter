@@ -306,10 +306,11 @@ failed_handshake:
 
 
 static void usage(const char *arg0) {
-  fprintf(stderr, "usage: %s [--threads=<1-1024>] [--gap=<gap to sleep between each handshake for a thread, in microsec>] [--interval=<start>,<stop>,<prob> ...] <target IPv4> <target port>\n", arg0);
+  fprintf(stderr, "usage: %s [--threads=<1-1024>] [--gap=<gap to sleep between each handshake for a thread, in microsec>] [--interval=<start>,<stop>,<prob> ...] [--seed-full-space] <target IPv4> <target port>\n", arg0);
   fprintf(stderr, "  --threads=<1-1024>: defaults to 64\n");
   fprintf(stderr, "  --gap=<amount of microsec to sleep between each handshake attempt>: defaults to 0, no gap\n");
-  fprintf(stderr, "  --interval=<start>,<stop>,<prob>. May be used multiple times \n");
+  fprintf(stderr, "  --interval=<start>,<stop>,<prob>: define a seed interval with the associated probability. It may be used multiple times to define search intervals\n");
+  fprintf(stderr, "  --seed-full-space: perform bruteforce over the whole seed space\n");
   exit(1);
 }
 
@@ -329,6 +330,7 @@ int main(int argc, char **argv) {
   uint64_t delta_fails;
   struct interval *new_interval;
   float cumulative_prob;
+  char full_space[] = "0,68719476735,1.0";
 
   TAILQ_INIT(&intervals);
 
@@ -337,11 +339,12 @@ int main(int argc, char **argv) {
     {"help", 0, 0, 'h'},
     {"threads", required_argument, 0, 't'},
     {"interval", required_argument, 0, 'i'},
+    {"seed-full-space", required_argument, 0, 's'},
     {NULL, 0, 0, 0},
   };
 
   while (1) {
-    c = getopt_long(argc, argv, "ht:g:i:", options, &option_index);
+    c = getopt_long(argc, argv, "hst:g:i:", options, &option_index);
     if (c == -1) {
       break;
     }
@@ -354,6 +357,12 @@ int main(int argc, char **argv) {
       break;
     case 't':
       n_workers = atoi(optarg);
+      break;
+    case 's':
+      new_interval = parse_interval(full_space);
+      if (new_interval) {
+        TAILQ_INSERT_HEAD(&intervals, new_interval, _next);
+      }
       break;
     case 'i':
       new_interval = parse_interval(optarg);
