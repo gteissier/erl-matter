@@ -69,7 +69,7 @@ int main(int argc, char **argv) {
   hash = argv[1];
 
   base64_decode_init(&base64_ctx);
-  base64_decode_update(&base64_ctx, &dst_size, raw_hash, strlen(hash), (const char *) hash);
+  base64_decode_update(&base64_ctx, &dst_size, raw_hash, strlen(hash), (const uint8_t *) hash);
   ret = base64_decode_final(&base64_ctx);
   assert(ret == 1);
   assert(dst_size == MD5_DIGEST_SIZE);
