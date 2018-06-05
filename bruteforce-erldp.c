@@ -313,6 +313,9 @@ failed_handshake:
       }
     }
 
+    if (quit)
+      break;
+
     w->cumulative_prob += w->current_interval->prob;
 
     ret = pthread_barrier_wait(&w->current_interval->barrier);
