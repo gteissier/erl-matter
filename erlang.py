@@ -419,9 +419,7 @@ def binary_to_term(data):
         raise ParseException('invalid version')
     try:
         i, term = _binary_to_term(1, data)
-        if i != size:
-            raise ParseException('unparsed data')
-        return term
+        return (i, term)
     except struct.error:
         raise ParseException('missing data')
     except IndexError:
