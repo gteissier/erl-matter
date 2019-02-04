@@ -28,6 +28,11 @@ static int n_workers = 64;
 static struct worker *workers;
 static unsigned int n_intervals = 0;
 
+
+#if defined(__APPLE__)
+#include "barrier.c"
+#endif
+
 struct interval {
   uint64_t start;
   uint64_t stop;
