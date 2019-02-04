@@ -19,6 +19,7 @@ parser = argparse.ArgumentParser(description='Execute shell command through Erla
 parser.add_argument('target', action='store', type=str, help='Erlang node address or FQDN')
 parser.add_argument('port', action='store', type=int, help='Erlang node TCP port')
 parser.add_argument('cookie', action='store', type=str, help='Erlang cookie')
+parser.add_argument('--verbose', action='store_true', help='Output decode Erlang binary term format received')
 parser.add_argument('cmd', default=None, nargs='?', action='store', type=str, help='Shell command to execute, defaults to interactive shell')
 
 args = parser.parse_args()
@@ -138,6 +139,10 @@ def send_cmd(name, cmd):
 
 def recv_reply(f):
   terms = [t for t in erl_dist_recv(f)]
+  if args.verbose:
+    print('\nreceived %r' % (terms))
+
+  '''received [(2, OtpErlangAtom(u''), OtpErlangPid(OtpErlangAtom(u'TKCPSU@nowhere'),'\x00\x00\x00\x03','\x00\x00\x00\x00','\x00')), (OtpErlangAtom(u'rex'), [])]'''
   assert(len(terms) == 2)
   answer = terms[1]
   assert(len(answer) == 2)
