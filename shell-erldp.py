@@ -59,6 +59,7 @@ if len(data) == 0:
   print('wrong cookie, auth unsuccessful')
   sys.exit(1)
 else:
+  print('received %r' % data)
   assert(data == '\x00\x11\x61')
   digest = sock.recv(16)
   assert(len(digest) == 16)
@@ -162,6 +163,9 @@ if not args.cmd:
     reply = recv_reply(sock)
     sys.stdout.write(reply)
 else:
+  import time
+  time.sleep(20.0)
+
   sock.sendall(send_cmd(name, args.cmd))
 
   reply = recv_reply(sock)
