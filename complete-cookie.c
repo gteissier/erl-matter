@@ -71,7 +71,6 @@ static const struct interval intervals[26] = {
 };
 
 volatile int quit = 0;
-volatile uint64_t seed0 = 0;
 
 struct worker {
   pthread_t tid;
@@ -81,9 +80,15 @@ struct worker {
   const char *cookie;
 };
 
+static uint64_t revert_random(uint64_t x) {
+  unsigned __int128 z = x;
+  z = ((z-1)*67451848633ULL) & 0xfffffffff;
+  return (uint64_t) z;
+}
+
 static void *run(void *arg) {
   struct worker *w = arg;
-  uint64_t seed;
+  uint64_t seed, seed_1;
   int ret;
   char derived[20+1];
 
@@ -93,7 +98,9 @@ static void *run(void *arg) {
       ret = pthread_mutex_lock(&output_lock);
       assert(ret == 0);
 
-      printf("%s (seed = %lld)\n", derived, seed);
+      seed_1 = revert_random(seed);
+
+      printf("%s (seed = %" PRIu64 ")\n", derived, seed_1);
 
       ret = pthread_mutex_unlock(&output_lock);
       assert(ret == 0);
