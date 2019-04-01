@@ -139,7 +139,7 @@ class DistConn(asyncore.dispatcher):
           self.authenticated = True
 
           if args.collect_challenges:
-            print('md5(%d|cookie) = %s' % (self.sock_class.challenge, hexlify(self.digest)))
+            print('md5(cookie|%d) = %s' % (self.sock_class.challenge, hexlify(self.digest)))
 
         elif self.act_as_client and opcode == 'a':
           digest = data[3:19]
@@ -149,7 +149,7 @@ class DistConn(asyncore.dispatcher):
           self.authenticated = True
 
           if args.collect_challenges:
-            print('md5(%d|cookie) = %s' % (self.sock_class.challenge, hexlify(self.digest)))
+            print('md5(cookie|%d) = %s' % (self.sock_class.challenge, hexlify(self.digest)))
 
           if args.inject_cmd:
             print('[!!!] INJECTING %r to server' % args.inject_cmd)
