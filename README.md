@@ -263,7 +263,7 @@ sys	0m16.311s
 In this case you can always fall back to raw md5 cracking using `oclHashcat` or `john`. Or google.
 The hash above matches `password` as plaintext.
 
-### Completing an partly leaked cookie
+### Completing a partly leaked cookie
 
 Imagine that a crash has given you only a part of the cookie. Due to its nature, missing parts can be completed ! For starter, let's begin with just a missing character, at the beginning:
 
