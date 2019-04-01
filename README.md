@@ -269,7 +269,7 @@ Imagine that a crash has given you only a part of the cookie. Due to its nature,
 
 ```
 $ time ./complete-cookie .ICIEBZGURYVBZWLJTFI
-IICIEBZGURYVBZWLJTFI (seed = 21832984186)
+IICIEBZGURYVBZWLJTFI (seed = 506551409)
 
 real	0m2.027s
 user	0m15.774s
@@ -280,16 +280,16 @@ Mission accomplished, though bruteforcing the 26 possible first character would 
 
 ```
 $ time ./complete-cookie .............ZWLJTFI
-QYUFBUCVATYSFZWLJTFI (seed = 21192402681)
-DZQLCMSUWKIIWZWLJTFI (seed = 21459172327)
-IICIEBZGURYVBZWLJTFI (seed = 21832984186)
-SPRNLDKPIEAKVZWLJTFI (seed = 22502081476)
-MKLNNWZUXYQCXZWLJTFI (seed = 22888304281)
-WSBSUZKCKLRRRZWLJTFI (seed = 23557401571)
+QYUFBUCVATYSFZWLJTFI (seed = 25860583736)
+DZQLCMSUWKIIWZWLJTFI (seed = 22290780982)
+IICIEBZGURYVBZWLJTFI (seed = 506551409)
+SPRNLDKPIEAKVZWLJTFI (seed = 40262700267)
+MKLNNWZUXYQCXZWLJTFI (seed = 54109041624)
+WSBSUZKCKLRRRZWLJTFI (seed = 25145713746)
 
-real	0m2.040s
-user	0m15.726s
-sys	0m0.028s
+real	0m2.201s
+user	0m15.618s
+sys	0m0.043s
 ```
 
 ### Bruteforcing Erlang cookie
