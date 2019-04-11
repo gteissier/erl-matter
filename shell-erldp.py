@@ -163,9 +163,6 @@ if not args.cmd:
     reply = recv_reply(sock)
     sys.stdout.write(reply)
 else:
-  import time
-  time.sleep(20.0)
-
   sock.sendall(send_cmd(name, args.cmd))
 
   reply = recv_reply(sock)
