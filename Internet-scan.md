@@ -96,7 +96,7 @@ So we have added it to the [dictionary-erldp](dictionary-erldp.py) logic, which 
 
 In a sandbox, this gives:
 
-[![asciicast][![asciicast](https://asciinema.org/a/243314.svg)](https://asciinema.org/a/243314)
+[![asciicast](https://asciinema.org/a/243314.svg)](https://asciinema.org/a/243314)
 
 
 # Secure your assets
