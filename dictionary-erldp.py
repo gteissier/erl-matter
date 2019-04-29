@@ -18,6 +18,7 @@ parser = argparse.ArgumentParser(description='Tests every cookie value in dictio
 
 parser.add_argument('target', action='store', type=str, help='Erlang node address or FQDN')
 parser.add_argument('port', action='store', type=int, help='Erlang node TCP port')
+parser.add_argument('process', action='store', type=str, help='Erlang process name')
 parser.add_argument('dictionary', action='store', type=str, help='Dictionary of Erlang cookies to test')
 parser.add_argument('--delay', type=float, default=0.0, help='Amount of seconds (float) to sleep between attempts')
 
@@ -67,12 +68,26 @@ args = parser.parse_args()
 
 f = open(args.dictionary, 'rb')
 cookies = [l.rstrip('\n') for l in f.readlines()]
+
+# always try process name itself, and its substrings
+def get_unique_substrings(s):
+  length = len(s)
+  result = set()
+  for i in xrange(length):
+    for j in xrange(i, length):
+      if s[i:j+1] not in result:
+        yield s[i:j+1]
+        result.add(s[i:j+1])
+
+for substring in get_unique_substrings(args.process):
+  cookies.append(substring)
+
 n_cookies = len(cookies)
 
 for i in range(len(cookies)):
   cookie = cookies[i]
 
-  sys.stdout.write('\r[{:2.2f} %] trying {:>32}'.format((100.0*i)//n_cookies, cookie))
+  sys.stdout.write('\r[{:2.2f} %] trying {:>64}'.format((100.0*i)//n_cookies, cookie))
   sys.stdout.flush()
 
   if does_cookie_authenticate(cookie):

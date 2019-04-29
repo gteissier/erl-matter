@@ -59,7 +59,6 @@ if len(data) == 0:
   print('wrong cookie, auth unsuccessful')
   sys.exit(1)
 else:
-  print('received %r' % data)
   assert(data == '\x00\x11\x61')
   digest = sock.recv(16)
   assert(len(digest) == 16)
@@ -143,7 +142,6 @@ def recv_reply(f):
   if args.verbose:
     print('\nreceived %r' % (terms))
 
-  '''received [(2, OtpErlangAtom(u''), OtpErlangPid(OtpErlangAtom(u'TKCPSU@nowhere'),'\x00\x00\x00\x03','\x00\x00\x00\x00','\x00')), (OtpErlangAtom(u'rex'), [])]'''
   assert(len(terms) == 2)
   answer = terms[1]
   assert(len(answer) == 2)
