@@ -106,3 +106,5 @@ Only good sense here, but having more than 100k machines exposed, it is worth re
 * **minimize network exposition**: Erlang distribution has virtually no reason to be exposed on the Internet. The use for remote control and clustering shall be controlled, not opened to the Internet
 * **change default Erlang cookies**: we have seen many default cookies accessible at github and google. And the combination of an open port and a known cookie gives remote code execution to attackers.
 
+
+# Many many thanks to [Cyril](https://twitter.com/kotzebuedog) for giving shodan download credits !
