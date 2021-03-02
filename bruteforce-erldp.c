@@ -211,7 +211,7 @@ static void *worker_run(void *arg) {
   uint64_t challenge;
   char cookie[20];
   uint8_t buffer[256];
-  char send_name[64] = "n" "\x00\x05" "\x00\x03\x7f\xfc";
+  char send_name[64] = "n" "\x00\x05" "\x00\x07\x7f\xfc";
   size_t name_length;
   char send_challenge_reply[23] = "\x00\x15" "r" "\x00\x00\x00\x00";
   const int on = 1;
