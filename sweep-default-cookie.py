@@ -22,7 +22,7 @@ parser.add_argument('targets', action='store', type=str, help='List of host:port
 parser.add_argument('--delay', type=float, default=0.0, help='Amount of seconds (float) to sleep between attempts')
 
 def send_name(name):
-  return pack('!HcHI', 7 + len(name), 'n', 5, 0x3499c) + name
+  return pack('!HcHI', 7 + len(name), 'n', 5, 0x7499c) + name
 
 def send_challenge_reply(cookie, challenge):
   m = md5()

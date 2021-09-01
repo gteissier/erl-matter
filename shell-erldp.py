@@ -33,7 +33,7 @@ assert(sock)
 sock.connect((args.target, args.port))
 
 def send_name(name):
-  return pack('!HcHI', 7 + len(name), 'n', 5, 0x3499c) + name
+  return pack('!HcHI', 7 + len(name), 'n', 5, 0x7499c) + name
 
 sock.sendall(send_name(name))
 
