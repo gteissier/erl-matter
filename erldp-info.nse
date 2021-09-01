@@ -104,7 +104,7 @@ action = function(host, port)
     return
   end
 
-  send_name = bin.pack('>SCSIA', 7+string.len(local_name), 110, 5, 0x3499c, local_name)
+  send_name = bin.pack('>SCSIA', 7+string.len(local_name), 110, 5, 0x7499c, local_name)
 
   if not client:send(send_name) then
     client:close()
