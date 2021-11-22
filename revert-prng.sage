@@ -6,6 +6,23 @@ Adapted from initial work performed by guillaume kaim.
 Example usage:
 
 echo "ELDUPJHMPTCVINSPFDTA" | ./revert-prng.sage
+404289480
+
+it works with sage 8.3
+
+to verify the solution, you can use derive_cookie(seed), and check it effectively equals the input cookie
+
+recent versions of sage do not solve correctly the modular system:
+
+8.4 and 9.1 versions give:
+
+```
+sage: revert_prng('ELDUPJHMPTCVINSPFDTA')
+61466461736
+sage: derive_cookie(61466461736)
+'ERZZMEZFKZVMABHVVCOI'
+```
+
 '''
 
 import string
@@ -21,7 +38,7 @@ B = F(1)
 
 a = [A]
 b = [B]
-for i in xrange(1, 20):
+for i in range(1, 20):
   a.append(a[-1]*A)
   b.append(b[-1]*A + B)
 
