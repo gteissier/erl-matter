@@ -3,13 +3,15 @@
 from struct import pack, unpack
 import asyncio
 from hashlib import md5
+from random import choice
+from string import ascii_uppercase
+
 
 # TCP framing: 2-bytes length followed by the message itself
 # The length field is the length of the message, not including length field
 async def send_frame(w, msg):
   assert(len(msg) < 2**16)
   data = pack('!H', len(msg)) + msg
-  print(f'> {data}')
   w.write(data)
   await w.drain()
 
@@ -18,7 +20,6 @@ async def recv_deframe(r):
   assert(len(data) == 2)
   (total_length,) = unpack('!H', data)
   data = await r.readexactly(total_length)
-  print(f'< {data}')
   return data
 
 
@@ -81,28 +82,40 @@ def compute_digest(cookie, challenge):
   return m.digest()
 
 
-if __name__ == '__main__':
-  async def test(port, cookie):
-    r, w = await asyncio.open_connection('127.0.0.1', port)
+def rand_id(n=6):
+  return ''.join([choice(ascii_uppercase) for c in range(n)]) + '@nowhere'
 
-    await send_name_v6(w, b'xxx@nowhere')
 
-    reason = await recv_status(r)
-    assert(reason == b'ok')
+async def authenticate(host, port, cookie):
+  r, w = await asyncio.open_connection(host, port)
 
-    (flags, challenge, creation, name) = await recv_challenge_v6(r)
+  await send_name_v6(w, rand_id().encode())
 
-    digest = compute_digest(cookie, challenge)
+  reason = await recv_status(r)
+  assert(reason == b'ok')
 
-    await send_challenge_reply(w, digest)
+  (flags, challenge, creation, name) = await recv_challenge_v6(r)
 
+  digest = compute_digest(cookie, challenge)
+
+  await send_challenge_reply(w, digest)
+
+  try:
     await recv_challenge_ack(r)
+  except:
+    return
 
+  return (r, w)
+
+
+
+if __name__ == '__main__':
   import argparse
   parser = argparse.ArgumentParser()
+  parser.add_argument('--host', default='127.0.0.1')
   parser.add_argument('port', type=int)
   parser.add_argument('cookie')
   args = parser.parse_args()
 
-  asyncio.run(test(args.port, args.cookie.encode()))
+  asyncio.run(authenticate(args.host, args.port, args.cookie.encode()))
 
