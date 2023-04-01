@@ -1,0 +1,5 @@
+FROM erlang:25.3
+
+RUN apt update -y && apt install -y python3 tcpdump vim iproute2
+
+CMD bash
