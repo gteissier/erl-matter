@@ -8,26 +8,61 @@ Example usage:
 echo "ELDUPJHMPTCVINSPFDTA" | ./revert-prng.sage
 404289480
 
-it works with sage 8.3
+it works with sage 10.3
 
 to verify the solution, you can use derive_cookie(seed), and check it effectively equals the input cookie
-
-recent versions of sage do not solve correctly the modular system:
-
-8.4 and 9.1 versions give:
-
-```
-sage: revert_prng('ELDUPJHMPTCVINSPFDTA')
-61466461736
-sage: derive_cookie(61466461736)
-'ERZZMEZFKZVMABHVVCOI'
-```
-
 '''
 
 import string
 import sys
 from scipy.stats import describe, tstd, cumfreq
+from sage.all import QQ, ZZ, matrix, vector
+
+
+def attack(y, n, m, a, c):
+    """
+    Slightly modified version from https://github.com/jvdsn/crypto-attacks/blob/master/attacks/lcg/truncated_state_recovery.py
+
+    Recovers the states associated with the outputs from a truncated linear congruential generator.
+    More information: Frieze, A. et al., "Reconstructing Truncated Integer Variables Satisfying Linear Congruences"
+    :param y: the sequential output values obtained from the truncated LCG (the states truncated in n possible values)
+    :param n: the number of possible y values
+    :param m: the modulus of the LCG
+    :param a: the multiplier of the LCG
+    :param c: the increment of the LCG
+    :return: a list containing the states associated with the provided outputs
+    """
+    # Preparing for the lattice reduction.
+    delta = c % m
+    y = vector(ZZ, y)
+    for i in range(len(y)):
+        # Shift output value to the MSBs and remove the increment.
+        y[i] = y[i] * m // n - delta
+        delta = (a * delta + c) % m
+
+    # This lattice only works for increment = 0.
+    B = matrix(ZZ, len(y), len(y))
+    B[0, 0] = m
+    for i in range(1, len(y)):
+        B[i, 0] = a ** i
+        B[i, i] = -1
+
+    B = B.LLL()
+
+    # Finding the target value to solve the equation for the states.
+    b = B * y
+    for i in range(len(b)):
+        b[i] = round(QQ(b[i]) / m) * m - b[i]
+
+    # Recovering the states
+    delta = c % m
+    x = list(B.solve_right(b))
+    for i, state in enumerate(x):
+        # Adding the MSBs and the increment back again.
+        x[i] = int(y[i] + state + delta)
+        delta = (a * delta + c) % m
+
+    return x
 
 N = 2**36
 
@@ -36,20 +71,6 @@ F = IntegerModRing(N)
 A = F(17059465)
 B = F(1)
 
-a = [A]
-b = [B]
-for i in range(1, 20):
-  a.append(a[-1]*A)
-  b.append(b[-1]*A + B)
-
-a_1 = []
-b_1 = []
-for i in range(20):
-  a_1.append(a[i]^(-1))
-  b_1.append(-b[i]*a_1[-1])
-
-
-intervals = [(0, 2643056797), (2643056798, 5286113595), (5286113596, 7929170392), (7929170393, 10572227190), (10572227191, 13215283987), (13215283988, 15858340785), (15858340786, 18501397582), (18501397583, 21144454380), (21144454381, 23787511177), (23787511178, 26430567975), (26430567976, 29073624772), (29073624773, 31716681570), (31716681571, 34359738367), (34359738368, 37002795165), (37002795166, 39645851963), (39645851964, 42288908760), (42288908761, 44931965558), (44931965559, 47575022355), (47575022356, 50218079153), (50218079154, 52861135950), (52861135951, 55504192748), (55504192749, 58147249545), (58147249546, 60790306343), (60790306344, 63433363140), (63433363141, 66076419938), (66076419939, 68719476735)]
 
 def split_cookie(cookie):
   nums = []
@@ -58,28 +79,12 @@ def split_cookie(cookie):
     nums.append(ord(cookie[i]) - ord('A'))
   return nums
 
-M = matrix(F, 19, 20)
-for i in range(19):
-  M[i,0] = a_1[0]
-  for j in range(1, i+1):
-    M[i,j] = 0
-  M[i,i+1] = -a_1[i+1]
-  for j in range(i+2, 20):
-    M[i,j] = 0
-
 def revert_prng(cookie):
   nums = split_cookie(cookie)
   assert(len(nums) == 20)
 
-  v = a_1[0]*intervals[nums[0]][0]+b_1[0]
-
-  n = matrix(F, 19, 1)
-  for i in range(19):
-    n[i,0] = a_1[i+1]*F(intervals[nums[i+1]][0])+b_1[i+1] - v
-
-  x = M.solve_right(n)
-
-  seed = a_1[0]*(x[0][0]+F(intervals[nums[0]][0]))+b_1[0]
+  x = attack(nums, 26, N, int(A), int(B))
+  seed = (x[0] - B) / A
 
   return int(seed)
 
@@ -92,7 +97,7 @@ def random_cookie(n, seed):
   x = seed
   for i in range(n):
     x = next_random(x)
-    yield chr((x*(26) / 0x1000000000) + ord('A'))
+    yield chr((x*(26) // 0x1000000000) + ord('A'))
 
 def next_random(x):
   ret = (x*17059465+1) & 0xfffffffff
